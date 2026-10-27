@@ -1,0 +1,53 @@
+name: Site de privacidade — validar e publicar após autorização
+on:
+  push:
+    branches: [main, master]
+    paths: ['website/**', '.github/workflows/privacy-pages.yml']
+  pull_request:
+    paths: ['website/**', '.github/workflows/privacy-pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: privacy-pages-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node website/scripts/build.mjs
+      - run: node website/scripts/check.mjs
+      - name: Guardar HTML para revisão sem publicar
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacy-site-preview
+          path: website/dist
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: website/dist
+  deploy:
+    # Sem esta variável explicitamente aprovada pelo proprietário, não existe deploy.
+    if: github.event_name != 'pull_request' && vars.PAGES_PUBLICATION_APPROVED == 'true' && github.repository == 'quejiin/quejiin.github.io' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publicar GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verificar páginas públicas por HTTPS
+        run: node website/scripts/verify-public.mjs
